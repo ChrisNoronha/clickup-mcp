@@ -1,0 +1,40 @@
+{
+  "name": "clickup-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for ClickUp task management - automatically update ClickUp with simple prompts",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "clickup-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "dev": "tsc && node dist/index.js",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "clickup",
+    "task-management",
+    "claude"
+  ],
+  "author": "",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
