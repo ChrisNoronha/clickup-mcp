@@ -241,6 +241,44 @@ export class ClickUpClient {
   }
 
   /**
+   * Search for a task by custom ID across all accessible workspaces
+   * @param customId The custom ID to search for (e.g., "ST-353")
+   * @returns The first matching task found, or throws if not found
+   */
+  async findTaskByCustomId(customId: string): Promise<Task> {
+    // Get all workspaces
+    const workspaces = await this.getWorkspaces();
+
+    // Try each workspace
+    for (const workspace of workspaces) {
+      try {
+        const task = await this.getTaskByCustomId(workspace.id, customId);
+        return task;
+      } catch (error: any) {
+        // Skip if not found in this workspace
+        if (error.message?.includes('404') || error.message?.includes('not found')) {
+          continue;
+        }
+        // Re-throw other errors
+        throw error;
+      }
+    }
+
+    // If we get here, the task was not found in any workspace
+    throw new Error(`Task with custom ID "${customId}" not found in any accessible workspace`);
+  }
+
+  /**
+   * Detect if a string looks like a custom ID (e.g., "ST-353", "PROJ-123")
+   * Custom IDs typically follow the pattern: LETTERS-NUMBERS
+   */
+  static isCustomId(id: string): boolean {
+    // Pattern: one or more letters, followed by a dash/hyphen, followed by one or more digits
+    const customIdPattern = /^[A-Z]+-\d+$/i;
+    return customIdPattern.test(id);
+  }
+
+  /**
    * Update an existing task
    */
   async updateTask(taskId: string, updates: UpdateTaskParams): Promise<Task> {

@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { getClickUpClient } from '../utils/clickup-client.js';
+import { getClickUpClient, ClickUpClient } from '../utils/clickup-client.js';
 import { formatErrorForMCP } from '../utils/error-handler.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -133,12 +133,85 @@ export function registerTaskTools(server: McpServer) {
   );
 
   /**
+   * Smart get task - auto-detects if ID is custom or regular
+   */
+  server.registerTool(
+    'smart_get_task',
+    {
+      description: 'Get a ClickUp task by ID. Automatically detects if the ID is a custom ID (e.g., ST-353, PROJ-123) or a regular task ID and handles it accordingly. This is the recommended tool for getting tasks when you\'re not sure of the ID type.',
+      inputSchema: z.object({
+        task_id: z.string().describe('The task ID - can be either a regular ClickUp task ID or a custom ID (e.g., ST-353)'),
+        include_subtasks: z.boolean().optional().describe('Whether to include subtasks in the response')
+      })
+    },
+    async ({ task_id, include_subtasks }) => {
+      try {
+        let task;
+
+        // Check if the ID looks like a custom ID (e.g., "ST-353", "PROJ-123")
+        if (ClickUpClient.isCustomId(task_id)) {
+          // It's a custom ID - search across all workspaces
+          console.error(`Detected custom ID format: ${task_id}. Searching across workspaces...`);
+          task = await client.findTaskByCustomId(task_id);
+        } else {
+          // It's a regular task ID
+          console.error(`Using regular task ID: ${task_id}`);
+          task = await client.getTask(task_id, { include_subtasks });
+        }
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                id: task.id,
+                ...(task.custom_id && { custom_id: task.custom_id }),
+                name: task.name,
+                description: task.description,
+                text_content: task.text_content,
+                status: task.status,
+                priority: task.priority,
+                assignees: task.assignees?.map(a => ({
+                  id: a.id,
+                  username: a.username,
+                  email: a.email
+                })),
+                due_date: task.due_date,
+                start_date: task.start_date,
+                tags: task.tags,
+                url: task.url,
+                list: task.list,
+                folder: task.folder,
+                space: task.space,
+                date_created: task.date_created,
+                date_updated: task.date_updated,
+                archived: task.archived,
+                custom_fields: task.custom_fields
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error getting task: ${formatErrorForMCP(error)}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+
+  /**
    * Get a task by custom ID
    */
   server.registerTool(
     'get_task_by_custom_id',
     {
-      description: 'Get detailed information about a ClickUp task using its custom ID (e.g., CUSTOM-123). Custom IDs are workspace-specific identifiers.',
+      description: 'Get detailed information about a ClickUp task using its custom ID (e.g., CUSTOM-123). Custom IDs are workspace-specific identifiers. Requires knowing the team_id. For automatic detection, use smart_get_task instead.',
       inputSchema: z.object({
         team_id: z.string().describe('The ClickUp workspace/team ID'),
         custom_task_id: z.string().describe('The custom task ID (e.g., CUSTOM-123, PROJ-456)'),
