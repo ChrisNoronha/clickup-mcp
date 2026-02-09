@@ -44,6 +44,7 @@ export function registerTaskTools(server: McpServer) {
               type: 'text' as const,
               text: `Task created successfully!\n\n${JSON.stringify({
                 id: task.id,
+                ...(task.custom_id && { custom_id: task.custom_id }),
                 name: task.name,
                 url: task.url,
                 status: task.status,
@@ -91,6 +92,7 @@ export function registerTaskTools(server: McpServer) {
               type: 'text' as const,
               text: JSON.stringify({
                 id: task.id,
+                ...(task.custom_id && { custom_id: task.custom_id }),
                 name: task.name,
                 description: task.description,
                 text_content: task.text_content,
@@ -131,6 +133,69 @@ export function registerTaskTools(server: McpServer) {
   );
 
   /**
+   * Get a task by custom ID
+   */
+  server.registerTool(
+    'get_task_by_custom_id',
+    {
+      description: 'Get detailed information about a ClickUp task using its custom ID (e.g., CUSTOM-123). Custom IDs are workspace-specific identifiers.',
+      inputSchema: z.object({
+        team_id: z.string().describe('The ClickUp workspace/team ID'),
+        custom_task_id: z.string().describe('The custom task ID (e.g., CUSTOM-123, PROJ-456)'),
+        include_subtasks: z.boolean().optional().describe('Whether to include subtasks in the response')
+      })
+    },
+    async ({ team_id, custom_task_id, include_subtasks }) => {
+      try {
+        const task = await client.getTaskByCustomId(team_id, custom_task_id, { include_subtasks });
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                id: task.id,
+                ...(task.custom_id && { custom_id: task.custom_id }),
+                name: task.name,
+                description: task.description,
+                text_content: task.text_content,
+                status: task.status,
+                priority: task.priority,
+                assignees: task.assignees?.map(a => ({
+                  id: a.id,
+                  username: a.username,
+                  email: a.email
+                })),
+                due_date: task.due_date,
+                start_date: task.start_date,
+                tags: task.tags,
+                url: task.url,
+                list: task.list,
+                folder: task.folder,
+                space: task.space,
+                date_created: task.date_created,
+                date_updated: task.date_updated,
+                archived: task.archived,
+                custom_fields: task.custom_fields
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error getting task by custom ID: ${formatErrorForMCP(error)}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+
+  /**
    * Get tasks from a list
    */
   server.registerTool(
@@ -159,6 +224,7 @@ export function registerTaskTools(server: McpServer) {
 
         const taskList = response.tasks.map(t => ({
           id: t.id,
+          custom_id: t.custom_id,
           name: t.name,
           status: t.status,
           priority: t.priority,
@@ -237,6 +303,7 @@ export function registerTaskTools(server: McpServer) {
               type: 'text' as const,
               text: `Task updated successfully!\n\n${JSON.stringify({
                 id: updatedTask.id,
+                ...(updatedTask.custom_id && { custom_id: updatedTask.custom_id }),
                 name: updatedTask.name,
                 status: updatedTask.status,
                 priority: updatedTask.priority,
@@ -253,6 +320,77 @@ export function registerTaskTools(server: McpServer) {
             {
               type: 'text' as const,
               text: `Error updating task: ${formatErrorForMCP(error)}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+
+  /**
+   * Update a task by custom ID
+   */
+  server.registerTool(
+    'update_task_by_custom_id',
+    {
+      description: 'Update a ClickUp task using its custom ID (e.g., CUSTOM-123). You can update name, description, status, priority, assignees, dates, and more.',
+      inputSchema: z.object({
+        team_id: z.string().describe('The ClickUp workspace/team ID'),
+        custom_task_id: z.string().describe('The custom task ID (e.g., CUSTOM-123, PROJ-456)'),
+        name: z.string().optional().describe('New task name'),
+        description: z.string().optional().describe('New plain text description'),
+        markdown_description: z.string().optional().describe('New markdown description'),
+        status: z.string().optional().describe('New status name'),
+        priority: z.number().min(1).max(4).optional().describe('New priority: 1=urgent, 2=high, 3=normal, 4=low'),
+        due_date: z.number().nullable().optional().describe('New due date as Unix timestamp in milliseconds (null to remove)'),
+        start_date: z.number().nullable().optional().describe('New start date as Unix timestamp in milliseconds (null to remove)'),
+        time_estimate: z.number().nullable().optional().describe('New time estimate in milliseconds (null to remove)'),
+        assignees_add: z.array(z.number()).optional().describe('User IDs to add as assignees'),
+        assignees_remove: z.array(z.number()).optional().describe('User IDs to remove from assignees'),
+        archived: z.boolean().optional().describe('Archive or unarchive the task')
+      })
+    },
+    async (params) => {
+      try {
+        const { team_id, custom_task_id, assignees_add, assignees_remove, ...updates } = params;
+
+        // Build assignees object if needed
+        const assigneesUpdate = (assignees_add || assignees_remove) ? {
+          assignees: {
+            ...(assignees_add && { add: assignees_add }),
+            ...(assignees_remove && { rem: assignees_remove })
+          }
+        } : {};
+
+        const updatedTask = await client.updateTaskByCustomId(team_id, custom_task_id, {
+          ...updates,
+          ...assigneesUpdate
+        });
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Task updated successfully!\n\n${JSON.stringify({
+                id: updatedTask.id,
+                ...(updatedTask.custom_id && { custom_id: updatedTask.custom_id }),
+                name: updatedTask.name,
+                status: updatedTask.status,
+                priority: updatedTask.priority,
+                assignees: updatedTask.assignees?.map(a => a.username),
+                due_date: updatedTask.due_date,
+                url: updatedTask.url
+              }, null, 2)}`
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error updating task by custom ID: ${formatErrorForMCP(error)}`
             }
           ],
           isError: true

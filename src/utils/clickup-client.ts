@@ -202,6 +202,16 @@ export class ClickUpClient {
   }
 
   /**
+   * Get a task by custom ID
+   */
+  async getTaskByCustomId(teamId: string, customTaskId: string, options?: Omit<GetTaskOptions, 'custom_task_ids'>): Promise<Task> {
+    return this.request<Task>('GET', `/team/${teamId}/task/${customTaskId}`, undefined, {
+      ...options,
+      custom_task_ids: true
+    });
+  }
+
+  /**
    * Get tasks from a list with optional filters
    */
   async getTasks(listId: string, filters?: TaskFilters): Promise<TasksResponse> {
@@ -209,10 +219,41 @@ export class ClickUpClient {
   }
 
   /**
+   * Search for tasks by custom ID across a workspace
+   */
+  async searchTasksByCustomId(teamId: string, customIds: string[]): Promise<Task[]> {
+    const tasks: Task[] = [];
+
+    for (const customId of customIds) {
+      try {
+        const task = await this.getTaskByCustomId(teamId, customId);
+        tasks.push(task);
+      } catch (error: any) {
+        // Skip tasks that are not found
+        if (error.message?.includes('404') || error.message?.includes('not found')) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return tasks;
+  }
+
+  /**
    * Update an existing task
    */
   async updateTask(taskId: string, updates: UpdateTaskParams): Promise<Task> {
     return this.request<Task>('PUT', `/task/${taskId}`, updates);
+  }
+
+  /**
+   * Update a task by custom ID
+   */
+  async updateTaskByCustomId(teamId: string, customTaskId: string, updates: UpdateTaskParams): Promise<Task> {
+    return this.request<Task>('PUT', `/team/${teamId}/task/${customTaskId}`, updates, {
+      custom_task_ids: true
+    });
   }
 
   /**
