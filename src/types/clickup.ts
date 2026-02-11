@@ -285,3 +285,37 @@ export interface ClickUpError {
   err: string;
   ECODE: string;
 }
+
+// Time Tracking Types
+
+export interface CreateTimeEntryParams {
+  tid: string;
+  start: number;
+  end: number;
+  duration: number;
+  description?: string;
+  billable?: boolean;
+  tags?: Array<{ name: string }>;
+}
+
+export interface TimeEntryResponse {
+  data: {
+    id: string;
+    task: {
+      id: string;
+      name: string;
+      custom_id?: string;
+      url?: string;
+      status?: Status;
+    };
+    wid: string;
+    user: User;
+    billable: boolean;
+    start: string;
+    end: string;
+    duration: string;
+    description: string;
+    tags: Array<{ name: string; tag_bg?: string; tag_fg?: string }>;
+    at: string;
+  };
+}

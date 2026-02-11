@@ -7,6 +7,49 @@ import { getClickUpClient, ClickUpClient } from '../utils/clickup-client.js';
 import { formatErrorForMCP } from '../utils/error-handler.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+/**
+ * Parse a time string into total minutes since midnight.
+ * Supports: "8:00 AM", "14:30", "8am", "2:30 PM", "08:00"
+ * Returns null if parsing fails.
+ */
+function parseTimeString(timeStr: string): number | null {
+  const trimmed = timeStr.trim();
+
+  // Pattern 1: 12-hour with minutes - "8:00 AM", "12:30 pm", "2:30PM"
+  const match12 = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm|Am|Pm)$/);
+  if (match12) {
+    let hours = parseInt(match12[1], 10);
+    const mins = parseInt(match12[2], 10);
+    const period = match12[3].toUpperCase();
+    if (hours < 1 || hours > 12 || mins < 0 || mins > 59) return null;
+    if (period === 'AM' && hours === 12) hours = 0;
+    if (period === 'PM' && hours !== 12) hours += 12;
+    return hours * 60 + mins;
+  }
+
+  // Pattern 2: Hour-only with AM/PM - "8am", "2PM", "12pm"
+  const matchHourOnly = trimmed.match(/^(\d{1,2})\s*(AM|PM|am|pm|Am|Pm)$/);
+  if (matchHourOnly) {
+    let hours = parseInt(matchHourOnly[1], 10);
+    const period = matchHourOnly[2].toUpperCase();
+    if (hours < 1 || hours > 12) return null;
+    if (period === 'AM' && hours === 12) hours = 0;
+    if (period === 'PM' && hours !== 12) hours += 12;
+    return hours * 60;
+  }
+
+  // Pattern 3: 24-hour format - "08:00", "14:30", "23:59"
+  const match24 = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (match24) {
+    const hours = parseInt(match24[1], 10);
+    const mins = parseInt(match24[2], 10);
+    if (hours < 0 || hours > 23 || mins < 0 || mins > 59) return null;
+    return hours * 60 + mins;
+  }
+
+  return null;
+}
+
 export function registerTaskTools(server: McpServer) {
   const client = getClickUpClient();
 
@@ -593,6 +636,138 @@ export function registerTaskTools(server: McpServer) {
               text: `Error getting list members: ${formatErrorForMCP(error)}`
             }
           ],
+          isError: true
+        };
+      }
+    }
+  );
+
+  // ========== Time Tracking Tools ==========
+
+  /**
+   * Track time on a task
+   */
+  server.registerTool(
+    'track_time',
+    {
+      description: 'Log a time entry on a ClickUp task. Accepts start and end times in AM/PM (e.g., "8:00 AM", "2pm") or 24h format (e.g., "14:00"). Automatically detects custom IDs (e.g., ST-353).',
+      inputSchema: z.object({
+        task_id: z.string().describe('The task ID - can be a regular ClickUp task ID or a custom ID (e.g., ST-353)'),
+        start_time: z.string().describe('Start time, e.g., "8:00 AM", "08:00", "8am", "14:30"'),
+        end_time: z.string().describe('End time, e.g., "12:00 PM", "17:00", "5pm"'),
+        date: z.string().optional().describe('Date in YYYY-MM-DD format (defaults to today)'),
+        description: z.string().optional().describe('Description of the work performed'),
+        billable: z.boolean().optional().describe('Whether the time entry is billable')
+      })
+    },
+    async ({ task_id, start_time, end_time, date, description, billable }) => {
+      try {
+        // 1. Parse the date (default to today)
+        const entryDate = date ? new Date(date + 'T00:00:00') : new Date();
+        const year = entryDate.getFullYear();
+        const month = entryDate.getMonth();
+        const day = entryDate.getDate();
+
+        if (isNaN(entryDate.getTime())) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Error: Invalid date format "${date}". Please use YYYY-MM-DD format (e.g., 2026-02-11).`
+            }],
+            isError: true
+          };
+        }
+
+        // 2. Parse start and end times
+        const startMinutes = parseTimeString(start_time);
+        const endMinutes = parseTimeString(end_time);
+
+        if (startMinutes === null) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Error: Could not parse start time "${start_time}". Supported formats: "8:00 AM", "08:00", "14:30", "2:30 PM", "8am".`
+            }],
+            isError: true
+          };
+        }
+
+        if (endMinutes === null) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Error: Could not parse end time "${end_time}". Supported formats: "12:00 PM", "17:00", "5:00 PM", "5pm".`
+            }],
+            isError: true
+          };
+        }
+
+        if (endMinutes <= startMinutes) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Error: End time (${end_time}) must be after start time (${start_time}).`
+            }],
+            isError: true
+          };
+        }
+
+        // 3. Build Unix timestamps in milliseconds
+        const startTimestamp = new Date(year, month, day, Math.floor(startMinutes / 60), startMinutes % 60).getTime();
+        const endTimestamp = new Date(year, month, day, Math.floor(endMinutes / 60), endMinutes % 60).getTime();
+        const durationMs = endTimestamp - startTimestamp;
+
+        // 4. Resolve the task (handles both custom IDs and regular IDs)
+        const task = await client.resolveTask(task_id);
+
+        // 5. Get the team ID
+        const teamId = await client.getTeamIdForTask(task);
+
+        // 6. Create the time entry
+        const response = await client.createTimeEntry(teamId, {
+          tid: task.id,
+          start: startTimestamp,
+          end: endTimestamp,
+          duration: durationMs,
+          ...(description && { description }),
+          ...(billable !== undefined && { billable })
+        });
+
+        // 7. Format duration for display
+        const hours = Math.floor(durationMs / (1000 * 60 * 60));
+        const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+        const durationDisplay = hours > 0
+          ? `${hours}h${minutes > 0 ? ` ${minutes}m` : ''}`
+          : `${minutes}m`;
+
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              message: 'Time entry created successfully!',
+              time_entry_id: response.data?.id,
+              task_id: task.id,
+              ...(task.custom_id && { custom_id: task.custom_id }),
+              task_name: task.name,
+              date: dateStr,
+              start_time,
+              end_time,
+              duration: durationDisplay,
+              duration_ms: durationMs,
+              ...(description && { description }),
+              ...(billable !== undefined && { billable }),
+              task_url: task.url
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error tracking time: ${formatErrorForMCP(error)}`
+          }],
           isError: true
         };
       }
