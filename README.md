@@ -21,8 +21,10 @@ A Model Context Protocol (MCP) server that enables Claude to interact with Click
 ### Task Management Tools
 - `create_task` - Create a new task with various properties
 - `get_task` - Get detailed information about a specific task
-- `get_tasks` - List tasks with filtering and pagination
+- `get_task_by_custom_id` - Get a task using its custom ID (e.g., CUSTOM-123)
+- `get_tasks` - List tasks with filtering and pagination (includes custom IDs)
 - `update_task` - Update task properties (name, status, assignees, etc.)
+- `update_task_by_custom_id` - Update a task using its custom ID
 - `delete_task` - Delete a task permanently
 
 ### Member Tools
@@ -164,11 +166,27 @@ Once configured, you can interact with ClickUp through natural language prompts 
 
 "Get details for task abc123"
 
+"Get task CUSTOM-123"
+
 "Update task xyz789 to mark it as complete"
+
+"Update task PROJ-456 to change its status to In Progress"
 
 "Change the priority of task abc123 to urgent"
 
 "Find all tasks assigned to me that are overdue"
+```
+
+### Working with Custom IDs
+
+Custom IDs are workspace-specific identifiers (e.g., CUSTOM-123, PROJ-456) that you can use instead of ClickUp's internal task IDs:
+
+```
+"Get the task with custom ID CUSTOM-123"
+
+"Update PROJ-456 and change the status to Complete"
+
+"Show me the details of task MARKETING-789"
 ```
 
 ### Team Collaboration

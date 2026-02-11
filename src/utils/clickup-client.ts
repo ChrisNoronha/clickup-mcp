@@ -202,6 +202,16 @@ export class ClickUpClient {
   }
 
   /**
+   * Get a task by custom ID
+   */
+  async getTaskByCustomId(teamId: string, customTaskId: string, options?: Omit<GetTaskOptions, 'custom_task_ids'>): Promise<Task> {
+    return this.request<Task>('GET', `/team/${teamId}/task/${customTaskId}`, undefined, {
+      ...options,
+      custom_task_ids: true
+    });
+  }
+
+  /**
    * Get tasks from a list with optional filters
    */
   async getTasks(listId: string, filters?: TaskFilters): Promise<TasksResponse> {
@@ -209,10 +219,160 @@ export class ClickUpClient {
   }
 
   /**
+   * Search for tasks by custom ID across a workspace
+   */
+  async searchTasksByCustomId(teamId: string, customIds: string[]): Promise<Task[]> {
+    const tasks: Task[] = [];
+
+    for (const customId of customIds) {
+      try {
+        const task = await this.getTaskByCustomId(teamId, customId);
+        tasks.push(task);
+      } catch (error: any) {
+        // Skip tasks that are not found
+        if (error.message?.includes('404') || error.message?.includes('not found')) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return tasks;
+  }
+
+  /**
+   * Search for a task by custom ID across all accessible workspaces
+   * This method searches through actual task lists and collects custom IDs
+   * @param customId The custom ID to search for (e.g., "ST-353")
+   * @returns The matching task found, or throws if not found
+   */
+  async findTaskByCustomId(customId: string): Promise<Task> {
+    const normalizedSearchId = customId.toUpperCase();
+    console.error(`\nSearching for custom ID: ${normalizedSearchId}`);
+
+    // Get all workspaces
+    const workspaces = await this.getWorkspaces();
+    console.error(`Found ${workspaces.length} workspace(s) to search`);
+
+    // First, try the direct API approach (faster if it works)
+    for (const workspace of workspaces) {
+      try {
+        console.error(`Trying direct API lookup in workspace: ${workspace.name} (${workspace.id})`);
+        const task = await this.getTaskByCustomId(workspace.id, customId);
+        console.error(`✓ Found task via direct API: ${task.name}`);
+        return task;
+      } catch (error: any) {
+        // Skip if not found, continue searching
+        if (error.message?.includes('404') || error.message?.includes('not found')) {
+          continue;
+        }
+        // For other errors, we'll fall back to list search
+      }
+    }
+
+    // If direct API didn't work, search through task lists
+    console.error(`Direct API search failed. Searching through task lists...`);
+
+    for (const workspace of workspaces) {
+      try {
+        console.error(`\nSearching workspace: ${workspace.name} (${workspace.id})`);
+
+        // Get all spaces in this workspace
+        const spaces = await this.getSpaces(workspace.id);
+        console.error(`  Found ${spaces.length} space(s)`);
+
+        for (const space of spaces) {
+          try {
+            // Get folders in this space
+            const folders = await this.getFolders(space.id);
+
+            // Get lists directly in the space (folderless lists)
+            const spaceLists = await this.getLists({ spaceId: space.id });
+
+            // Combine lists from folders and space
+            const allLists: List[] = [...spaceLists];
+            for (const folder of folders) {
+              if (folder.lists) {
+                allLists.push(...folder.lists);
+              } else {
+                const folderLists = await this.getLists({ folderId: folder.id });
+                allLists.push(...folderLists);
+              }
+            }
+
+            console.error(`  Space "${space.name}": searching ${allLists.length} list(s)`);
+
+            // Search through each list
+            for (const list of allLists) {
+              try {
+                // Get tasks from this list (including their custom IDs)
+                const response = await this.getTasks(list.id, {
+                  include_closed: true,
+                  subtasks: false
+                });
+
+                // Search through tasks for matching custom ID
+                for (const task of response.tasks) {
+                  if (task.custom_id) {
+                    const normalizedTaskId = task.custom_id.toUpperCase();
+                    if (normalizedTaskId === normalizedSearchId) {
+                      console.error(`\n✓ Found matching task: ${task.name}`);
+                      console.error(`  Custom ID: ${task.custom_id}`);
+                      console.error(`  List: ${list.name}`);
+                      console.error(`  Space: ${space.name}`);
+
+                      // Get full task details
+                      return await this.getTask(task.id);
+                    }
+                  }
+                }
+              } catch (listError: any) {
+                // Skip lists that fail
+                console.error(`    Warning: Could not search list "${list.name}": ${listError.message}`);
+                continue;
+              }
+            }
+          } catch (spaceError: any) {
+            // Skip spaces that fail
+            console.error(`  Warning: Could not search space "${space.name}": ${spaceError.message}`);
+            continue;
+          }
+        }
+      } catch (workspaceError: any) {
+        // Skip workspaces that fail
+        console.error(`Warning: Could not search workspace "${workspace.name}": ${workspaceError.message}`);
+        continue;
+      }
+    }
+
+    // If we get here, the task was not found anywhere
+    throw new Error(`Task with custom ID "${customId}" not found in any accessible workspace, space, or list`);
+  }
+
+  /**
+   * Detect if a string looks like a custom ID (e.g., "ST-353", "PROJ-123")
+   * Custom IDs typically follow the pattern: LETTERS-NUMBERS
+   */
+  static isCustomId(id: string): boolean {
+    // Pattern: one or more letters, followed by a dash/hyphen, followed by one or more digits
+    const customIdPattern = /^[A-Z]+-\d+$/i;
+    return customIdPattern.test(id);
+  }
+
+  /**
    * Update an existing task
    */
   async updateTask(taskId: string, updates: UpdateTaskParams): Promise<Task> {
     return this.request<Task>('PUT', `/task/${taskId}`, updates);
+  }
+
+  /**
+   * Update a task by custom ID
+   */
+  async updateTaskByCustomId(teamId: string, customTaskId: string, updates: UpdateTaskParams): Promise<Task> {
+    return this.request<Task>('PUT', `/team/${teamId}/task/${customTaskId}`, updates, {
+      custom_task_ids: true
+    });
   }
 
   /**
