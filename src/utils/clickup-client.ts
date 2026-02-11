@@ -412,6 +412,13 @@ export class ClickUpClient {
   }
 
   /**
+   * Update an existing time entry
+   */
+  async updateTimeEntry(teamId: string, timerId: string, params: Record<string, any>): Promise<TimeEntryResponse> {
+    return this.request<TimeEntryResponse>('PUT', `/team/${teamId}/time_entries/${timerId}`, params);
+  }
+
+  /**
    * Resolve a task identifier (custom ID or regular ID) to a full task object
    */
   async resolveTask(taskIdentifier: string): Promise<Task> {

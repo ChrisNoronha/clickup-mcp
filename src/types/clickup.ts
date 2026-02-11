@@ -291,7 +291,6 @@ export interface ClickUpError {
 export interface CreateTimeEntryParams {
   tid: string;
   start: number;
-  end: number;
   duration: number;
   description?: string;
   billable?: boolean;

@@ -723,15 +723,24 @@ export function registerTaskTools(server: McpServer) {
         // 5. Get the team ID
         const teamId = await client.getTeamIdForTask(task);
 
-        // 6. Create the time entry
+        // 6. Step 1: Create the time entry with start + duration
         const response = await client.createTimeEntry(teamId, {
           tid: task.id,
           start: startTimestamp,
-          end: endTimestamp,
           duration: durationMs,
           ...(description && { description }),
           ...(billable !== undefined && { billable })
         });
+
+        // 7. Step 2: Update the time entry to set the correct end time
+        const timerId = response.data?.id;
+        if (timerId) {
+          console.error(`Time entry created (${timerId}). Updating end time...`);
+          await client.updateTimeEntry(teamId, timerId, {
+            end: endTimestamp
+          });
+          console.error(`End time updated successfully.`);
+        }
 
         // 7. Format duration for display
         const hours = Math.floor(durationMs / (1000 * 60 * 60));
