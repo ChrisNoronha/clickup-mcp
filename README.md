@@ -43,7 +43,7 @@ A Model Context Protocol (MCP) server that enables Claude to interact with Click
 
 ```bash
 git clone <repository-url>
-cd clickup-agent
+cd clickup-mcp
 npm install
 ```
 
@@ -97,7 +97,7 @@ This compiles the TypeScript code to JavaScript in the `dist/` directory.
   "mcpServers": {
     "clickup": {
       "command": "node",
-      "args": ["C:\\Users\\username\\Documents\\clickup-updater\\clickup-agent\\dist\\index.js"],
+      "args": ["C:\Users\username\Documents\clickup-updater\clickup-mcp\dist\index.js"],
       "env": {
         "CLICKUP_API_TOKEN": "pk_your_actual_token_here"
       }
@@ -106,7 +106,7 @@ This compiles the TypeScript code to JavaScript in the `dist/` directory.
 }
 ```
 
-**Note**: Replace the path with your actual installation path. Use double backslashes (`\\`) in Windows paths.
+**Note**: Replace the path with your actual installation path. Use double backslashes (`\`) in Windows paths.
 
 ### macOS/Linux
 
@@ -122,7 +122,7 @@ This compiles the TypeScript code to JavaScript in the `dist/` directory.
   "mcpServers": {
     "clickup": {
       "command": "node",
-      "args": ["/absolute/path/to/clickup-agent/dist/index.js"],
+      "args": ["/absolute/path/to/clickup-mcp/dist/index.js"],
       "env": {
         "CLICKUP_API_TOKEN": "pk_your_actual_token_here"
       }
@@ -202,7 +202,7 @@ Custom IDs are workspace-specific identifiers (e.g., CUSTOM-123, PROJ-456) that 
 ### Project Structure
 
 ```
-clickup-agent/
+clickup-mcp/
 ├── src/
 │   ├── index.ts              # Entry point with STDIO transport
 │   ├── server.ts             # MCP server setup and tool registration
@@ -268,6 +268,13 @@ For detailed information about ClickUp's API, see:
 ## License
 
 MIT
+
+## Contributors
+
+| Contributor | Role |
+|---|---|
+| [ChrisNoronha](https://github.com/ChrisNoronha) | Author & Maintainer |
+| [Claude Code](https://claude.ai/code) (Anthropic) | AI Collaborator — assisted in design, implementation, and documentation |
 
 ## Contributing
 
