@@ -23,6 +23,7 @@ export function createServer(): McpServer {
   console.error('- Navigation: get_workspaces, get_spaces, get_folders, get_lists');
   console.error('- Tasks: create_task, get_task, smart_get_task, get_task_by_custom_id, get_tasks, update_task, update_task_by_custom_id, delete_task');
   console.error('- Members: get_task_members, get_list_members');
+  console.error('- Time Tracking: track_time');
 
   return server;
 }

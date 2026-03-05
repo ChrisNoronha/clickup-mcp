@@ -20,7 +20,9 @@ import type {
   SpacesResponse,
   FoldersResponse,
   ListsResponse,
-  MembersResponse
+  MembersResponse,
+  CreateTimeEntryParams,
+  TimeEntryResponse
 } from '../types/clickup.js';
 
 export class ClickUpClient {
@@ -398,6 +400,51 @@ export class ClickUpClient {
   async getListMembers(listId: string): Promise<Member[]> {
     const response = await this.request<MembersResponse>('GET', `/list/${listId}/member`);
     return response.members;
+  }
+
+  // ========== Time Tracking Methods ==========
+
+  /**
+   * Create a time entry for a task
+   */
+  async createTimeEntry(teamId: string, params: CreateTimeEntryParams): Promise<TimeEntryResponse> {
+    return this.request<TimeEntryResponse>('POST', `/team/${teamId}/time_entries`, params);
+  }
+
+  /**
+   * Update an existing time entry
+   */
+  async updateTimeEntry(teamId: string, timerId: string, params: Record<string, any>): Promise<TimeEntryResponse> {
+    return this.request<TimeEntryResponse>('PUT', `/team/${teamId}/time_entries/${timerId}`, params);
+  }
+
+  /**
+   * Resolve a task identifier (custom ID or regular ID) to a full task object
+   */
+  async resolveTask(taskIdentifier: string): Promise<Task> {
+    if (ClickUpClient.isCustomId(taskIdentifier)) {
+      console.error(`Detected custom ID format: ${taskIdentifier}. Searching across workspaces...`);
+      return this.findTaskByCustomId(taskIdentifier);
+    } else {
+      console.error(`Using regular task ID: ${taskIdentifier}`);
+      return this.getTask(taskIdentifier);
+    }
+  }
+
+  /**
+   * Get the team/workspace ID for a given task.
+   * Falls back to the first workspace if task doesn't include team_id.
+   */
+  async getTeamIdForTask(task: Task): Promise<string> {
+    if (task.team_id) {
+      return task.team_id;
+    }
+    console.error('Task does not have team_id. Falling back to first workspace.');
+    const workspaces = await this.getWorkspaces();
+    if (workspaces.length === 0) {
+      throw new Error('No accessible workspaces found. Cannot determine team ID for time entry.');
+    }
+    return workspaces[0].id;
   }
 }
 
